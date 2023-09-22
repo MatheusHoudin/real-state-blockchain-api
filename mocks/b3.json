@@ -1,0 +1,17 @@
+{
+    "name": "B3 - Bolsa de Valores",
+    "description": "Bolsa brasileira de investimentos localizada em sao paulo",
+    "image": "https://ogimg.infoglobo.com.br/in/24752316-c43-4e7/FT1086A/b3.jpg",
+    "external_link": "https://www.b3.com.br/pt_br/b3/institucional/unidades/",
+    "attributes": [
+        {
+            "trait_type": "Address",
+            "value": "Praça Antônio Prado, 48 - Centro Histórico de São Paulo, São Paulo - SP, 01010-010"
+        },
+        {
+            "trait_type": "Date of Creati",
+            "value": "1123103449",
+            "display_type": "date"
+        }
+    ]
+}
