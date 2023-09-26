@@ -1,5 +1,6 @@
 const axios = require("axios");
 const express = require("express");
+const bodyParser = require('body-parser')
 const app = express()
 const { Alchemy, Network, Wallet, Utils } = require("alchemy-sdk");
 const { createAlchemyWeb3 } = require("@alch/alchemy-web3");
@@ -30,39 +31,57 @@ const buyerSigner = new ethers.Wallet(PRIVATE_KEY_BUYER, alchemyProvider);
 // Contract
 const realStateContract = new ethers.Contract(CONTRACT_ADDRESS, realStateNftABI.abi, buyerSigner);
 
+app.use(bodyParser.json())
+app.use(bodyParser.urlencoded({ extended: false }))
+
 function main() {
 
   app.get('/nft/:id', async (req, res) => {
-    console.log(req.params);
-    const id = req.params.id;
-    const coinAddress = await realStateContract.tokenCoin(id);
-    const propertyClient = await realStateContract.propertyClient(id);
-    const tokenUri = await realStateContract.tokenURI(id);
-    console.log(tokenUri)
-    switch (tokenUri) {
-      case 'https://private-ea9709-realstatenft.apiary-mock.com/b3':
+    try {
+      const id = req.params.id;
+      const coinAddress = await realStateContract.tokenCoin(id);
+      const propertyClient = await realStateContract.propertyClient(id);
+      const tokenUri = await realStateContract.tokenURI(id);
+      axios.get(tokenUri)
+      .then((response) => {
         res.json({
           coinAddress: coinAddress,
           propertyClient: propertyClient,
           tokenUri: tokenUri,
-          nftData: b3
+          nftData: response.data
         });
-      case 'www.matheus.com.br':
-        res.json({
-          coinAddress: coinAddress,
-          propertyClient: propertyClient,
-          tokenUri: tokenUri,
-          nftData: b99
-        });
-    }
-  
-    /*
-          res.json({
-        coinAddress: coinAddress,
-        propertyClient: propertyClient,
-        tokenUri: tokenUri
       })
-    */
+      .catch((err) => {
+        res.json({
+          coinAddress: coinAddress,
+          propertyClient: propertyClient,
+          tokenUri: tokenUri
+        });
+      });
+    } catch (err) {
+      res.json(err)
+    }
+  })
+
+  app.post('/nft', async (req, res) => {
+    try {
+      const {uri, initialSupply, lockedAmount, coinName, coinSymbol} = req.body
+      const nftResult = await realStateContract.createNFT(
+        uri,
+        initialSupply,
+        lockedAmount,
+        coinName,
+        coinSymbol,
+        {
+            value: web3.utils.toWei("0.05", 'ether')
+        }
+      );
+      console.log(nftResult)
+      res.json(nftResult)
+    } catch (err) {
+      console.log(err)
+      res.json(err)
+    }
   })
 
   app.listen(3000, () => {
