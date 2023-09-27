@@ -23,13 +23,14 @@ const settings = {
 const web3 = createAlchemyWeb3(API_URL); 
 
 const alchemyProvider = new ethers.providers.JsonRpcProvider(API_URL);
+const alchemy = new Alchemy(settings);
 
 // Signer
 const signer = new ethers.Wallet(PRIVATE_KEY_OWNER, alchemyProvider);
 const buyerSigner = new ethers.Wallet(PRIVATE_KEY_BUYER, alchemyProvider);
 
 // Contract
-const realStateContract = new ethers.Contract(CONTRACT_ADDRESS, realStateNftABI.abi, buyerSigner);
+const realStateContract = new ethers.Contract(CONTRACT_ADDRESS, realStateNftABI.abi, signer);
 
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: false }))
@@ -84,37 +85,49 @@ function main() {
     }
   })
 
+  app.post('/buyCoins', async (req, res) => {
+    try {
+      const {nftId, buyerAddress, ethValue} = req.body
+      const buyResult = await realStateContract.buyCoins(
+        nftId,
+        buyerAddress,
+        {
+          value: web3.utils.toWei(ethValue, 'ether')
+        }
+      );
+      console.log(buyResult)
+      let waitResult = buyResult.wait();
+      res.json(waitResult)
+    } catch (err) {
+      console.log(err)
+      res.json(err)
+    }
+  })
+
+  app.get('/nfts/:owner', async (req, res) => {
+    try {
+      const owner = req.params.owner;
+      const nfts = await alchemy.nft.getNftsForOwner(owner, {
+        contractAddresses: ["0xd9f8B406d91486298915b9b6eE189Cc77dCE2C59"]
+      })
+      res.json(nfts);
+    } catch (err) {
+      res.json(err)
+    }
+  })
+
+  app.get('/nfts', async (req, res) => {
+    try {
+      const nfts = await alchemy.nft.getNftsForContract("0xd9f8B406d91486298915b9b6eE189Cc77dCE2C59")
+      res.json(nfts);
+    } catch (err) {
+      res.json(err)
+    }
+  })
+
   app.listen(3000, () => {
     console.log(`Example app listening on port ${3000}`)
   })
-}
-
-async function buyCoins() {
-  const buyResult = await realStateContract.buyCoins(
-    1,
-    '0x2b0938aa49C457CCdE9b6Ab1d30EB1f4464423d5',
-    {
-      value: web3.utils.toWei("0.05", 'ether')
-    }
-  );
-  console.log(buyResult)
-  let waitResult = buyResult.wait();
-  console.log(waitResult)
-}
-
-async function createNewNft() {
-  const nftResult = await realStateContract.createNFT(
-    "www.matheus.com.br",
-    '10000000000000000000000',
-    '1000000000000000000000',
-    "EmpireState",
-    "EST",
-    {
-        value: web3.utils.toWei("0.05", 'ether')
-    }
-  );
-
-  console.log(nftResult);
 }
 
 main();
