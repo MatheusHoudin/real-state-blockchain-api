@@ -8,6 +8,7 @@ const { ethers } = require("hardhat");
 const dotenv = require("dotenv");
 const realStateNftABI = require("./abi/RealStateNFT.json");
 const realStateCoinABI = require("./abi/RealStateCoin.json");
+var BigNumber = require('bignumber.js');
 
 const b3 = require('./mocks/b3.json');
 const b99 = require('./mocks/brooklyn99.json');
@@ -30,12 +31,30 @@ const signer = new ethers.Wallet(PRIVATE_KEY_OWNER, alchemyProvider);
 const buyerSigner = new ethers.Wallet(PRIVATE_KEY_BUYER, alchemyProvider);
 
 // Contract
-const realStateContract = new ethers.Contract(CONTRACT_ADDRESS, realStateNftABI.abi, signer);
+const realStateContract = new ethers.Contract(CONTRACT_ADDRESS, realStateNftABI.abi, buyerSigner);
 
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: false }))
 
 function main() {
+  
+  app.get('/realStateNft', async (req, res) => {
+    try {
+      const contractName = await realStateContract.name();
+      const contractSymbol = await realStateContract.symbol();
+      let nftPrice = await realStateContract.NFT_VALUE();
+      nftPrice = BigInt(nftPrice).toString();
+      res.json({
+        contractName,
+        contractSymbol,
+        nftPrice,
+        contractAddress: CONTRACT_ADDRESS
+      })
+    } catch (err) {
+      console.log(err)
+      res.json(err)
+    }
+  })
 
   app.get('/nft/:id', async (req, res) => {
     try {
@@ -47,7 +66,10 @@ function main() {
       .then((response) => {
         res.json({
           coinAddress: coinAddress,
-          propertyClient: propertyClient,
+          propertyClient: {
+            client: propertyClient[0],
+            value: BigInt(propertyClient[1]).toString()
+          },
           tokenUri: tokenUri,
           nftData: response.data
         });
@@ -121,6 +143,21 @@ function main() {
       const nfts = await alchemy.nft.getNftsForContract("0xd9f8B406d91486298915b9b6eE189Cc77dCE2C59")
       res.json(nfts);
     } catch (err) {
+      res.json(err)
+    }
+  })
+
+  app.post('/setPropertyClient', async (req, res) => {
+    try {
+      const {client, nftId, rentValue} = req.body
+      const result = await realStateContract.setPropertyClient(
+        client,
+        nftId,
+        rentValue
+      );
+      res.json(result)
+    } catch (err) {
+      console.log(err)
       res.json(err)
     }
   })
