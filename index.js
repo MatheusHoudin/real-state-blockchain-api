@@ -8,10 +8,6 @@ const { ethers } = require("hardhat");
 const dotenv = require("dotenv");
 const realStateNftABI = require("./abi/RealStateNFT.json");
 const realStateCoinABI = require("./abi/RealStateCoin.json");
-var BigNumber = require('bignumber.js');
-
-const b3 = require('./mocks/b3.json');
-const b99 = require('./mocks/brooklyn99.json');
 
 dotenv.config();
 const { API_URL, API_KEY, PRIVATE_KEY_OWNER, CONTRACT_ADDRESS, PRIVATE_KEY_BUYER } = process.env;
@@ -31,7 +27,13 @@ const signer = new ethers.Wallet(PRIVATE_KEY_OWNER, alchemyProvider);
 const buyerSigner = new ethers.Wallet(PRIVATE_KEY_BUYER, alchemyProvider);
 
 // Contract
-const realStateContract = new ethers.Contract(CONTRACT_ADDRESS, realStateNftABI.abi, buyerSigner);
+const realStateContract = new ethers.Contract(CONTRACT_ADDRESS, realStateNftABI.abi, signer);
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+
+function getNftCoinContract(contractAddress) {
+  return new ethers.Contract(contractAddress, realStateCoinABI.abi, signer)
+}
 
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: false }))
@@ -86,6 +88,32 @@ function main() {
     }
   })
 
+  app.get('/nftCoin/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      const coinAddress = await realStateContract.tokenCoin(id);
+      const coinContract = getNftCoinContract(coinAddress);
+      const name = await coinContract.name()
+      const symbol = await coinContract.symbol()
+      const totalSupply = await coinContract.totalSupply()
+      const lockedAmount = await coinContract.lockedAmount()
+      const availableTokenAmount = await coinContract.availableTokenAmount()
+      const totalRentIncomeReceived = await coinContract.totalRentIncomeReceived()
+      res.json({
+        address: coinAddress,
+        name,
+        symbol,
+        totalSupply: BigInt(totalSupply).toString(),
+        lockedAmount: BigInt(lockedAmount).toString(),
+        availableTokenAmount: BigInt(availableTokenAmount).toString(),
+        totalRentIncomeReceived: BigInt(totalRentIncomeReceived).toString()
+      })
+    } catch (err) {
+      console.log(err)
+      res.json(err)
+    }
+  })
+
   app.post('/nft', async (req, res) => {
     try {
       const {uri, initialSupply, lockedAmount, coinName, coinSymbol} = req.body
@@ -110,6 +138,7 @@ function main() {
   app.post('/buyCoins', async (req, res) => {
     try {
       const {nftId, buyerAddress, ethValue} = req.body
+      web3.utils.fromWei()
       const buyResult = await realStateContract.buyCoins(
         nftId,
         buyerAddress,
@@ -117,9 +146,43 @@ function main() {
           value: web3.utils.toWei(ethValue, 'ether')
         }
       );
-      console.log(buyResult)
-      let waitResult = buyResult.wait();
-      res.json(waitResult)
+      res.json(buyResult)
+    } catch (err) {
+      console.log(err)
+      res.json(err)
+    }
+  })
+
+  app.get('/currentInvestorCoinState/:id/investor/:investorAddress', async (req, res) => {
+    try {
+      const {id, investorAddress} = req.params;
+      const coinAddress = await realStateContract.tokenCoin(id);
+      
+      if (coinAddress == ZERO_ADDRESS) {
+        return res.json({
+          error: {
+            reason: "Invalid address 0x0000000000000000000000000000000000000000"
+          }
+        })
+      }
+
+      const coinContract = getNftCoinContract(coinAddress);
+      const coinBalance = await coinContract.balanceOf(investorAddress)
+      const holderPercentage = await coinContract.getHolderPercentage(investorAddress)
+      const availableTokenAmount = BigInt(await coinContract.availableTokenAmount())
+      const totalIncomeReceived = BigInt(await coinContract.totalRentIncomeReceived())
+      const lastWithdrawal = BigInt(await coinContract.lastWithdrawalBase(investorAddress))
+
+      const availableToWithdraw = (((totalIncomeReceived - lastWithdrawal) / BigInt(100)) * BigInt(holderPercentage));
+
+      res.json({
+        coinBalance: web3.utils.fromWei(BigInt(coinBalance).toString(), 'ether'),
+        availableTokenAmount: web3.utils.fromWei(availableTokenAmount.toString()),
+        holderPercentage: holderPercentage.toString(),
+        totalIncomeReceived: web3.utils.fromWei(totalIncomeReceived.toString()),
+        lastWithdrawal: web3.utils.fromWei(lastWithdrawal.toString()),
+        availableToWithdraw: web3.utils.fromWei(availableToWithdraw.toString())
+      })
     } catch (err) {
       console.log(err)
       res.json(err)
@@ -155,6 +218,49 @@ function main() {
         nftId,
         rentValue
       );
+      res.json(result)
+    } catch (err) {
+      console.log(err)
+      res.json(err)
+    }
+  })
+
+  app.post('/payRent/:nftId', async (req, res) => {
+    try {
+      const nftId = req.params.nftId
+      const propertyClient = await realStateContract.propertyClient(nftId);
+      const rentValue = BigInt(propertyClient[1]).toString();
+      
+      const result = await realStateContract.payRent(
+        nftId,
+        {
+          value: rentValue
+        }
+      );
+      res.json(result)
+    } catch (err) {
+      console.log(err)
+      res.json(err)
+    }
+  })
+
+  app.post('/withdrawDividends/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      const coinAddress = await realStateContract.tokenCoin(id);
+      
+      if (coinAddress == ZERO_ADDRESS) {
+        return res.json({
+          error: {
+            reason: "Invalid address 0x0000000000000000000000000000000000000000"
+          }
+        })
+      }
+
+      const coinContract = getNftCoinContract(coinAddress);
+
+      const result = await coinContract.withdrawDividends();
+
       res.json(result)
     } catch (err) {
       console.log(err)

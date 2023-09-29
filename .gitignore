@@ -1,4 +1,5 @@
 node_modules
+response_mocks
 .env
 coverage
 coverage.json
