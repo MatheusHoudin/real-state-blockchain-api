@@ -23,7 +23,7 @@ const alchemyProvider = new ethers.providers.JsonRpcProvider(API_URL);
 const alchemy = new Alchemy(settings);
 
 // Signer
-const signer = new ethers.Wallet(PRIVATE_KEY_OWNER, alchemyProvider);
+const signer = new ethers.Wallet("194518a6a057013868ad67cf7cb3ce5eac93d5fb349ad412b9af92688f3c0412", alchemyProvider);
 const buyerSigner = new ethers.Wallet(PRIVATE_KEY_BUYER, alchemyProvider);
 
 // Contract
@@ -45,12 +45,14 @@ function main() {
       const contractName = await realStateContract.name();
       const contractSymbol = await realStateContract.symbol();
       let nftPrice = await realStateContract.NFT_VALUE();
+      const user = web3.eth.accounts.privateKeyToAccount("194518a6a057013868ad67cf7cb3ce5eac93d5fb349ad412b9af92688f3c0412")
       nftPrice = BigInt(nftPrice).toString();
       res.json({
         contractName,
         contractSymbol,
         nftPrice,
-        contractAddress: CONTRACT_ADDRESS
+        contractAddress: CONTRACT_ADDRESS,
+        user
       })
     } catch (err) {
       console.log(err)
