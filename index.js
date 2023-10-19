@@ -22,37 +22,50 @@ const web3 = createAlchemyWeb3(API_URL);
 const alchemyProvider = new ethers.providers.JsonRpcProvider(API_URL);
 const alchemy = new Alchemy(settings);
 
-// Signer
-const signer = new ethers.Wallet("194518a6a057013868ad67cf7cb3ce5eac93d5fb349ad412b9af92688f3c0412", alchemyProvider);
-const buyerSigner = new ethers.Wallet(PRIVATE_KEY_BUYER, alchemyProvider);
-
-// Contract
-const realStateContract = new ethers.Contract(CONTRACT_ADDRESS, realStateNftABI.abi, signer);
-
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 
-function getNftCoinContract(contractAddress) {
+function getNftCoinContract(contractAddress, signer) {
   return new ethers.Contract(contractAddress, realStateCoinABI.abi, signer)
 }
 
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: false }))
 
+const validatePrivateKey = function (req, res, next) {
+  if (req.headers["privatekey"] == undefined) {
+    return res.sendStatus(401)
+  }
+  req.privateKey = req.headers["privatekey"]
+
+  const signerAccount = new ethers.Wallet(req.privateKey, alchemyProvider);
+  const realStateContract = new ethers.Contract(CONTRACT_ADDRESS, realStateNftABI.abi, signerAccount);
+
+  req.realStateContract = realStateContract
+  req.signer = signerAccount
+  next()
+}
+
+app.use(validatePrivateKey)
+
 function main() {
   
   app.get('/realStateNft', async (req, res) => {
     try {
+      const realStateContract = req.realStateContract
       const contractName = await realStateContract.name();
       const contractSymbol = await realStateContract.symbol();
       let nftPrice = await realStateContract.NFT_VALUE();
-      const user = web3.eth.accounts.privateKeyToAccount("194518a6a057013868ad67cf7cb3ce5eac93d5fb349ad412b9af92688f3c0412")
+      const user = req.privateKey !== undefined ? web3.eth.accounts.privateKeyToAccount(req.privateKey) : null
       nftPrice = BigInt(nftPrice).toString();
+      let userEthBalance = await ethers.provider.getBalance(user.address)
+      userEthBalance = BigInt(userEthBalance).toString()
       res.json({
         contractName,
         contractSymbol,
         nftPrice,
         contractAddress: CONTRACT_ADDRESS,
-        user
+        user,
+        userEthBalance
       })
     } catch (err) {
       console.log(err)
@@ -63,6 +76,7 @@ function main() {
   app.get('/nft/:id', async (req, res) => {
     try {
       const id = req.params.id;
+      const realStateContract = req.realStateContract
       const coinAddress = await realStateContract.tokenCoin(id);
       const propertyClient = await realStateContract.propertyClient(id);
       const tokenUri = await realStateContract.tokenURI(id);
@@ -93,8 +107,9 @@ function main() {
   app.get('/nftCoin/:id', async (req, res) => {
     try {
       const id = req.params.id;
+      const realStateContract = req.realStateContract
       const coinAddress = await realStateContract.tokenCoin(id);
-      const coinContract = getNftCoinContract(coinAddress);
+      const coinContract = getNftCoinContract(coinAddress, req.signer);
       const name = await coinContract.name()
       const symbol = await coinContract.symbol()
       const totalSupply = await coinContract.totalSupply()
@@ -119,6 +134,7 @@ function main() {
   app.post('/nft', async (req, res) => {
     try {
       const {uri, initialSupply, lockedAmount, coinName, coinSymbol} = req.body
+      const realStateContract = req.realStateContract
       const nftResult = await realStateContract.createNFT(
         uri,
         initialSupply,
@@ -140,7 +156,7 @@ function main() {
   app.post('/buyCoins', async (req, res) => {
     try {
       const {nftId, buyerAddress, ethValue} = req.body
-      web3.utils.fromWei()
+      const realStateContract = req.realStateContract
       const buyResult = await realStateContract.buyCoins(
         nftId,
         buyerAddress,
@@ -158,6 +174,7 @@ function main() {
   app.get('/currentInvestorCoinState/:id/investor/:investorAddress', async (req, res) => {
     try {
       const {id, investorAddress} = req.params;
+      const realStateContract = req.realStateContract
       const coinAddress = await realStateContract.tokenCoin(id);
       
       if (coinAddress == ZERO_ADDRESS) {
@@ -168,7 +185,7 @@ function main() {
         })
       }
 
-      const coinContract = getNftCoinContract(coinAddress);
+      const coinContract = getNftCoinContract(coinAddress, req.signer);
       const coinBalance = await coinContract.balanceOf(investorAddress)
       const holderPercentage = await coinContract.getHolderPercentage(investorAddress)
       const availableTokenAmount = BigInt(await coinContract.availableTokenAmount())
@@ -206,7 +223,25 @@ function main() {
   app.get('/nfts', async (req, res) => {
     try {
       const nfts = await alchemy.nft.getNftsForContract("0xd9f8B406d91486298915b9b6eE189Cc77dCE2C59")
-      res.json(nfts);
+      axios.all(nfts.nfts.map((nft) => {
+        if (nft.metadataError == undefined) {
+          return axios.get(nft.tokenUri.gateway)
+        }
+      })).then((data) => {
+        const metadataResult = data.map((nft) => {
+          if (nft != undefined) {
+            return nft.data
+          }
+        })
+        const nftsResult = []
+        nfts.nfts.forEach((value, index) => {
+          nftsResult.push({
+            tokenId: value.tokenId,
+            metadata: metadataResult[index]
+          })
+        })
+        res.json(nftsResult);
+      })
     } catch (err) {
       res.json(err)
     }
@@ -215,6 +250,7 @@ function main() {
   app.post('/setPropertyClient', async (req, res) => {
     try {
       const {client, nftId, rentValue} = req.body
+      const realStateContract = req.realStateContract
       const result = await realStateContract.setPropertyClient(
         client,
         nftId,
@@ -230,6 +266,7 @@ function main() {
   app.post('/payRent/:nftId', async (req, res) => {
     try {
       const nftId = req.params.nftId
+      const realStateContract = req.realStateContract
       const propertyClient = await realStateContract.propertyClient(nftId);
       const rentValue = BigInt(propertyClient[1]).toString();
       
@@ -249,6 +286,7 @@ function main() {
   app.post('/withdrawDividends/:id', async (req, res) => {
     try {
       const id = req.params.id;
+      const realStateContract = req.realStateContract
       const coinAddress = await realStateContract.tokenCoin(id);
       
       if (coinAddress == ZERO_ADDRESS) {
@@ -259,7 +297,7 @@ function main() {
         })
       }
 
-      const coinContract = getNftCoinContract(coinAddress);
+      const coinContract = getNftCoinContract(coinAddress, req.signer);
 
       const result = await coinContract.withdrawDividends();
 
