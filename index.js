@@ -10,8 +10,8 @@ const realStateNftABI = require("./abi/RealStateNFT.json");
 const realStateCoinABI = require("./abi/RealStateCoin.json");
 
 dotenv.config();
-const { API_URL, API_KEY, PRIVATE_KEY_OWNER, CONTRACT_ADDRESS, PRIVATE_KEY_BUYER } = process.env;
-
+const { API_URL, API_KEY, CONTRACT_ADDRESS } = process.env;
+console.log(process.env)
 const settings = {
   apiKey: API_KEY,
   network: Network.ETH_SEPOLIA,
@@ -84,6 +84,7 @@ function main() {
       .then((response) => {
         res.json({
           coinAddress: coinAddress,
+          nftId: id,
           propertyClient: {
             client: propertyClient[0],
             value: BigInt(propertyClient[1]).toString()
@@ -142,7 +143,7 @@ function main() {
         coinName,
         coinSymbol,
         {
-            value: web3.utils.toWei("0.05", 'ether')
+            value: web3.utils.toWei("0.02", 'ether')
         }
       );
       console.log(nftResult)
@@ -208,21 +209,53 @@ function main() {
     }
   })
 
-  app.get('/nfts/:owner', async (req, res) => {
+  app.get('/wallet/:owner', async (req, res) => {
     try {
       const owner = req.params.owner;
       const nfts = await alchemy.nft.getNftsForOwner(owner, {
-        contractAddresses: ["0xd9f8B406d91486298915b9b6eE189Cc77dCE2C59"]
+        contractAddresses: ["0xC60320b983bCe296E982bD0440D86b4F6CD15bED"]
       })
-      res.json(nfts);
+      const balances = await alchemy.core.getTokensForOwner(owner);
+      
+      const tokens = []
+      for (let token of balances.tokens) {
+
+        if (token.decimals != null && token.decimals !== 0) {
+          tokens.push(token)
+        }
+      }
+
+      axios.all(nfts.ownedNfts.map((nft) => {
+        if (nft.metadataError == undefined) {
+          return axios.get(nft.tokenUri.gateway)
+        }
+      })).then((data) => {
+        const metadataResult = data.map((nft) => {
+          if (nft != undefined) {
+            return nft.data
+          }
+        })
+        const nftsResult = []
+        nfts.ownedNfts.forEach((value, index) => {
+          nftsResult.push({
+            tokenId: value.tokenId,
+            metadata: metadataResult[index]
+          })
+        })
+        res.json({
+          tokens,
+          nfts: nftsResult
+        });
+      })
     } catch (err) {
+      console.log(err)
       res.json(err)
     }
   })
 
   app.get('/nfts', async (req, res) => {
     try {
-      const nfts = await alchemy.nft.getNftsForContract("0xd9f8B406d91486298915b9b6eE189Cc77dCE2C59")
+      const nfts = await alchemy.nft.getNftsForContract("0xC60320b983bCe296E982bD0440D86b4F6CD15bED")
       axios.all(nfts.nfts.map((nft) => {
         if (nft.metadataError == undefined) {
           return axios.get(nft.tokenUri.gateway)
@@ -308,9 +341,10 @@ function main() {
     }
   })
 
-  app.listen(3000, () => {
+  const server = app.listen(3000, () => {
     console.log(`Example app listening on port ${3000}`)
   })
+  server.setTimeout(50000000)
 }
 
 main();
