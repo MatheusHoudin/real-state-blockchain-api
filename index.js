@@ -11,7 +11,6 @@ const realStateCoinABI = require("./abi/RealStateCoin.json");
 
 dotenv.config();
 const { API_URL, API_KEY, CONTRACT_ADDRESS } = process.env;
-console.log(process.env)
 const settings = {
   apiKey: API_KEY,
   network: Network.ETH_SEPOLIA,
@@ -117,6 +116,7 @@ function main() {
       const lockedAmount = await coinContract.lockedAmount()
       const availableTokenAmount = await coinContract.availableTokenAmount()
       const totalRentIncomeReceived = await coinContract.totalRentIncomeReceived()
+      
       res.json({
         address: coinAddress,
         name,
@@ -213,7 +213,7 @@ function main() {
     try {
       const owner = req.params.owner;
       const nfts = await alchemy.nft.getNftsForOwner(owner, {
-        contractAddresses: ["0xC60320b983bCe296E982bD0440D86b4F6CD15bED"]
+        contractAddresses: [CONTRACT_ADDRESS]
       })
       const balances = await alchemy.core.getTokensForOwner(owner);
       
@@ -255,7 +255,7 @@ function main() {
 
   app.get('/nfts', async (req, res) => {
     try {
-      const nfts = await alchemy.nft.getNftsForContract("0xC60320b983bCe296E982bD0440D86b4F6CD15bED")
+      const nfts = await alchemy.nft.getNftsForContract(CONTRACT_ADDRESS)
       axios.all(nfts.nfts.map((nft) => {
         if (nft.metadataError == undefined) {
           return axios.get(nft.tokenUri.gateway)
